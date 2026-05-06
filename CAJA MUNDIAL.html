@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Meta Mundial PRO</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #0f0f0f, #1c1c1c);
+    color: white;
+}
+
+.container {
+    max-width: 400px;
+    margin: auto;
+    padding: 20px;
+}
+
+.card {
+    background: #1e1e1e;
+    border-radius: 20px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+}
+
+h1 {
+    text-align: center;
+}
+
+.progress-bar {
+    height: 25px;
+    background: #333;
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+.progress {
+    height: 100%;
+    background: linear-gradient(90deg, #00ff88, #00ccff);
+    text-align: center;
+    line-height: 25px;
+    font-weight: bold;
+    transition: 0.5s;
+}
+
+input {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    border: none;
+    margin-top: 10px;
+    font-size: 16px;
+}
+
+button {
+    width: 100%;
+    padding: 12px;
+    border-radius: 12px;
+    border: none;
+    margin-top: 10px;
+    font-size: 16px;
+    background: linear-gradient(90deg, #00ff88, #00ccff);
+    color: black;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.reset {
+    background: red;
+    color: white;
+}
+
+.stats {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+}
+
+.stat {
+    text-align: center;
+    flex: 1;
+}
+
+.calendar {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+    margin-top: 10px;
+}
+
+.day {
+    padding: 10px;
+    text-align: center;
+    border-radius: 10px;
+    background: #2a2a2a;
+    font-size: 12px;
+}
+
+.active {
+    background: #00ff88;
+    color: black;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Meta $12,500</h1>
+
+<div class="card">
+    <div class="progress-bar">
+        <div class="progress" id="barra">0%</div>
+    </div>
+    <h2 id="total">$0</h2>
+
+    <input type="number" id="dinero" placeholder="¿Cuánto ganaste hoy?">
+    <button onclick="agregarDinero()">Agregar</button>
+    <button class="reset" onclick="resetear()">Resetear</button>
+</div>
+
+<div class="card">
+    <div class="stats">
+        <div class="stat">
+            <h3 id="promedio">$0</h3>
+            <p>Promedio</p>
+        </div>
+        <div class="stat">
+            <h3 id="dias">0</h3>
+            <p>Días restantes</p>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <canvas id="grafica"></canvas>
+</div>
+
+<div class="card">
+    <h3>Calendario</h3>
+    <div class="calendar" id="calendar"></div>
+</div>
+
+</div>
+
+<script type="module">
+// 🔥 FIREBASE
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDyqIqjuRCC_xLsIlrKS07dPO_O9zPn7S4",
+  authDomain: "progreso-caja-del-mundial.firebaseapp.com",
+  projectId: "progreso-caja-del-mundial",
+  storageBucket: "progreso-caja-del-mundial.firebasestorage.app",
+  messagingSenderId: "387205621665",
+  appId: "1:387205621665:web:02dec7be0c77371d71cde0",
+  measurementId: "G-6PJHK564SX"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// 📊 DATOS
+let meta = 12500;
+let total = 0;
+let historial = [];
+let fechas = [];
+
+// 📈 GRÁFICA
+const ctx = document.getElementById('grafica').getContext('2d');
+let grafica = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: 'Ganancia diaria',
+            data: [],
+            borderColor: '#00ff88',
+            backgroundColor: 'rgba(0,255,136,0.2)',
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        scales: {
+            y: { beginAtZero: true }
+        }
+    }
+});
+
+// 📥 CARGAR DATOS
+async function cargarDatos() {
+    const ref = doc(db, "usuarios", "usuario1");
+    const snap = await getDoc(ref);
+
+    if (snap.exists()) {
+        const data = snap.data();
+        total = data.total || 0;
+        historial = data.historial || [];
+        fechas = data.fechas || [];
+        actualizarTodo();
+    }
+}
+
+// 💾 GUARDAR DATOS
+async function guardarDatos() {
+    await setDoc(doc(db, "usuarios", "usuario1"), {
+        total,
+        historial,
+        fechas
+    });
+}
+
+// ➕ AGREGAR DINERO
+window.agregarDinero = function() {
+    let cantidad = parseFloat(document.getElementById("dinero").value);
+    if (isNaN(cantidad) || cantidad <= 0) return;
+
+    total += cantidad;
+    historial.push(cantidad);
+
+    let f = new Date();
+    let fecha = f.getDate() + "/" + (f.getMonth()+1);
+    fechas.push(fecha);
+
+    guardarDatos();
+    actualizarTodo();
+
+    document.getElementById("dinero").value = "";
+}
+
+// 🔄 ACTUALIZAR TODO
+function actualizarTodo() {
+    let porcentaje = Math.min((total/meta)*100,100);
+    document.getElementById("barra").style.width = porcentaje + "%";
+    document.getElementById("barra").innerText = porcentaje.toFixed(1) + "%";
+    document.getElementById("total").innerText = "$" + total.toFixed(2);
+
+    let promedio = historial.length ? total / historial.length : 0;
+    document.getElementById("promedio").innerText = "$" + promedio.toFixed(0);
+
+    let faltante = meta - total;
+    let dias = promedio > 0 ? Math.ceil(faltante / promedio) : 0;
+    document.getElementById("dias").innerText = dias > 0 ? dias : "✔";
+
+    grafica.data.labels = fechas;
+    grafica.data.datasets[0].data = historial;
+    grafica.update();
+
+    let cal = document.getElementById("calendar");
+    cal.innerHTML = "";
+
+    fechas.slice(-28).forEach(f => {
+        let div = document.createElement("div");
+        div.className = "day active";
+        div.innerText = f.split("/")[0];
+        cal.appendChild(div);
+    });
+}
+
+// 🔄 RESET
+window.resetear = async function() {
+    if (!confirm("¿Resetear todo?")) return;
+
+    total = 0;
+    historial = [];
+    fechas = [];
+
+    await guardarDatos();
+    actualizarTodo();
+}
+
+// 🚀 INICIAR
+cargarDatos();
+
+</script>
+
+</body>
+</html>
